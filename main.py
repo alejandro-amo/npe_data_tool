@@ -1,5 +1,6 @@
 import time
 
+import pandas
 import requests
 from bs4 import BeautifulSoup
 import shutil
@@ -13,6 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()
 auth_username = os.getenv('AUTH_USERNAME')
 auth_password = os.getenv('AUTH_PASSWORD')
+google_api_key = os.getenv('GOOGLE_API_KEY')
 # ↓ not only used as a base for other URLs, also used for first time HTTP auth in web server
 baseurl = 'https://www.nopucesperar.cat/admin'
 scrap_listitems_url = f'{baseurl}/?apt=establiment-llista&page=1&orig=establiment&ordre=&direccio=&&codi=&resultats=1'
@@ -24,14 +26,15 @@ session = requests.Session()
 folder_path = 'tmp'
 output_path = 'output'
 output_xlsx = 'output.xlsx'
+xlsxpath = os.path.join(output_path, output_xlsx)
 # ↓ used in scrapping routines to not accidentally cause a DoS attack on the server we scrap content from
-throttling_value = 0.1
+throttling_value = 1
 max_connection_strikes = 10
 throttling_on_connection_strike = 2
 list_of_parsed_values = []
 
 
-def authenticate():
+def npe_authenticate():
     global session
     # Perform HTTP authentication to obtain cookies
     session.auth = (auth_username, auth_password)
@@ -43,7 +46,7 @@ def authenticate():
 
 def get_amount_of_establishments() -> object:
     global session
-    authenticate()
+    npe_authenticate()
     # Set cookies for subsequent requests
     cookies = session.cookies.get_dict()
     # Connect to the web page
@@ -171,7 +174,6 @@ def parse_pages():
         if page_values:
             list_of_parsed_values.append(page_values)
     # Create a Pandas DataFrame from the list of dictionaries
-    xlsxpath = os.path.join(output_path, output_xlsx)
     print(f'Dumping to excel file {xlsxpath}...')
     df = pd.DataFrame(list_of_parsed_values)
     # Export the DataFrame to an Excel file
@@ -182,7 +184,7 @@ def parse_pages():
 
 def build_weird_npe_form_data(**kwargs):
     return_value = OrderedDict()
-    keynotfound = True  # we always need to check if there is a value for 'input[id]' which defines what item to update.
+    idnotfound = True  # we always need to check if there is a value for 'input[id]' which defines what item to update.
     for key, value in kwargs.items():
         # some shorthands for convenience. you can pass "id" and it will be parsed as in the original form: "input[id]"
         if key == 'id':
@@ -215,8 +217,8 @@ def build_weird_npe_form_data(**kwargs):
             key = 'input[adreca]'
         return_value[key] = (None, value)
         if key == 'input[id]':
-            keynotfound = False
-    if keynotfound:
+            idnotfound = False
+    if idnotfound:
         print('ERROR: we need at least the value of id to know what item are we going to update!')
         exit(1)
     return return_value
@@ -226,7 +228,7 @@ def update_sheet_data(npe_id, **kwargs):
     kwargs_str = ', '.join(f"{key}={value}" for key, value in kwargs.items())
     print(f'DEBUG: Updating item {npe_id} with following parameters: {kwargs_str}')
     global session
-    authenticate()
+    # npe_authenticate()
     files = build_weird_npe_form_data(id=npe_id, **kwargs)
     response = session.post(update_data_url, files=files)
     if response.status_code == 200:
@@ -234,6 +236,147 @@ def update_sheet_data(npe_id, **kwargs):
     else:
         print(f'WARNING: Update of item {npe_id} returned HTTP code {response.status_code}.')
     return response
+
+def enhance_establishment_data(name, address, postalcode, city, latitude, longitude):
+    # Create the request URL with the provided parameters
+    url = f'https://maps.googleapis.com/maps/api/geocode/json?address={name}, {address}, {postalcode}, {city}&latlng={latitude},{longitude}&key={google_api_key}'
+
+    try:
+        # Send a GET request to the Geocoding API
+        response = requests.get(url)
+        data = response.json()
+
+        if response.status_code == 200 and data['status'] == 'OK':
+            # Extract the enhanced/corrected data from the API response
+            result = data['results'][0]
+            # print(f'Debug - Google API results: {result}')
+            # enhanced_name = result['name']
+            enhanced_address = result['formatted_address']
+            enhanced_postalcode = None  # We extract it later
+            enhanced_city = None  # We extract it later
+            enhanced_latitude = result['geometry']['location']['lat']
+            enhanced_longitude = result['geometry']['location']['lng']
+            # Now, the stuff that needs iteration to be extracted
+            for component in result['address_components']:
+                if 'postal_code' in component['types']:
+                    enhanced_postalcode = component['long_name']
+                elif 'locality' in component['types']:
+                    enhanced_city = component['long_name']
+            for component in result['address_components']:
+                if 'postal_code' in component['types']:
+                    enhanced_postal_code = component['long_name']
+                if 'locality' in component['types']:
+                    enhanced_city = component['long_name']
+
+            # Return the enhanced/corrected data
+            return {
+                'address': enhanced_address,
+                'postalcode': enhanced_postalcode,
+                'city': enhanced_city,
+                'lat': enhanced_latitude,
+                'long': enhanced_longitude
+            }
+        else:
+            if data['status'] == 'ZERO_RESULTS':   # Well, nobody's perfect.
+                print('INFO: No results for this search. Returning empty dictionary.')
+                return {'address': None, 'postalcode': None, 'city': None, 'lat': None, 'long': None }
+            if response.status_code != 200:
+                print(f'ERROR: Google API HTTP status code was not OK ({response.status_code})')
+                print(f'Google API response was: {str(response.text)}')
+                exit(1)
+
+    except requests.exceptions.RequestException as e:
+        # Handle connection or request errors
+        print(f'Error: {str(e)}')
+        return None
+
+
+def enrich_establishment_addresses():
+    print(f'Loading NoPucEsperar data in {xlsxpath}...')
+    try:
+        df = pd.read_excel(xlsxpath)
+    except:
+        print('Error loading xlsx file with scrapped data from NoPucEsperar.')
+        print('You should perfom scrape command in order to have a working Excel file.')
+        exit(1)
+    # Sort by id
+    df.sort_values('id', inplace=True)
+    new_address = []
+    new_postalcode = []
+    new_city = []
+    new_lat = []
+    new_long = []
+
+    for index,row in df.iterrows():
+        id = row['id']
+        name = row['name']
+        address = row['address']
+        postalcode = row['postalcode']
+        city = row['city']
+        lat = row['lat']
+        long = row['long']
+        print(f'Querying Google API to enhance address and coordinates of establishment #{id}...')
+        enriched_data = enhance_establishment_data(name, address, postalcode, city, lat, long)
+        if not enriched_data:
+            print('After querying Google API, we got no data. Please check connection or API key errors.')
+            exit(1)
+        # print(f'Debug - Obtained result from Google API: {enriched_data}')
+        new_address.append(enriched_data['address'])
+        new_postalcode.append(enriched_data['postalcode'])
+        new_city.append(enriched_data['city'])
+        new_lat.append(enriched_data['lat'])
+        new_long.append(enriched_data['long'])
+    df['new_address'] = new_address
+    df['new_postalcode'] = new_postalcode
+    df['new_city'] = new_city
+    df['new_lat'] = new_lat
+    df['new_long'] = new_long
+    return df
+
+
+def mass_update_sheets_from_xlsx_data():
+    print(f'Loading NoPucEsperar data in {xlsxpath}...')
+    try:
+        df = pd.read_excel(xlsxpath)
+    except:
+        print('Error loading xlsx file with scrapped data from NoPucEsperar.')
+        print('You should perfom scrape command in order to have a working Excel file.')
+        exit(1)
+    # Sort by id
+    df.sort_values('id', inplace=True)
+    df.fillna('', inplace=True)
+    df = df.astype(str)
+    df['id'] = pd.to_numeric(df['id'])
+    for index,row in df.iterrows():
+        id = row['id']
+        if id > 1924:  # we use this if for limiting operation to certain ranges of sheets i.e. from 4921 to 4926
+            print(f'Updating sheet of establishment with id {id} in NoPucEsperar...')
+            name = row['name']
+            address = row['address']
+            postalcode = row['postalcode']
+            city = row['city']
+            phone = row['phone']
+            email = row['email']
+            web = row['web']
+            lat = row['lat']
+            long = row['long']
+            '''
+            _ = update_sheet_data(id,
+                                  nom=name,
+                                  adreca=address,
+                                  cp=postalcode,
+                                  poblacio=city,
+                                  telefon=phone,
+                                  email=email,
+                                  web=web,
+                                  latitud=lat,
+                                  longitud=long)
+            '''
+            _ = update_sheet_data(id, actiu=1)
+            time.sleep(throttling_value)
+        else:
+            pass
+
 
 
 def parse_parameters():
@@ -297,6 +440,7 @@ if __name__ == '__main__':
     if 'command' in parameters:
         if parameters['command'] == 'update':
             npe_id = parameters['id']  # use 'id=4927' for testing purposes
+            npe_authenticate()  # test auth, raise error if failed
             update_sheet_data(npe_id, entitat_fk=parameters['entitat_fk'], tipus_fk=parameters['tipus_fk'],
                               nom=parameters['nom'], adreca=parameters['adreca'], cp=parameters['cp'],
                               telefon=parameters['telefon'], email=parameters['email'], web=parameters['web'],
@@ -305,3 +449,14 @@ if __name__ == '__main__':
             max_id = get_amount_of_establishments()
             dump_pages(max_id, 1)  # TODO: provide control of start_from parameter via command line
             parse_pages()
+        elif parameters['command'] == 'enrich':
+            results = enrich_establishment_addresses()
+            results.to_excel(xlsxpath)
+        elif parameters['command'] == 'massupdate':
+            npe_authenticate()  # test authentication, raise error if failed
+            mass_update_sheets_from_xlsx_data()
+        else:
+            print('Unknown command specified!')
+    else:
+        print('No command specified!')
+    print('Finished')
