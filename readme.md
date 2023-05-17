@@ -9,7 +9,7 @@ and solve several problems of an old App's data lifecycle:
     <br>
     <img src="https://www.nopuedoesperar.es/upload/apartat/esp.jpg" alt="Header Image">
     <br>
-    <p>
+    <p style="text-align: center">
         <a href="#what-is-npe">What is NPE?</a> •
         <a href="#what-data-challenge-does-npe-face">What data challenge does NPE face?</a> •
         <a href="#usage">Usage</a> •
@@ -22,7 +22,7 @@ and solve several problems of an old App's data lifecycle:
         However, you can take a look at the code to grab snippets of code and learn about data scrapping/updating in complex situations. If it was useful for you in a way or another, please star ⭐️ this repository and send me an email to tell your story :)</em>
     </p>
     <br>
-    <p>
+    <p style="text-align: center">
         <img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/your-username/your-repository?style=flat-square">
         <img alt="GitHub issues" src="https://img.shields.io/github/issues/your-username/your-repository?style=flat-square">
         <img alt="GitHub pull requests" src="https://img.shields.io/github/issues-pr/your-username/your-repository?style=flat-square">
