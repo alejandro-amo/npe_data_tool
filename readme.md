@@ -1,4 +1,4 @@
-<div style="text-align: center">
+<div style="text-align: center" align="center">
     <h1>Data Tool for 🚽 NPE App 🚽 </h1>
     <p>
         <strong>A practical example on how to use Python to cover several needs<br>
