@@ -13,7 +13,8 @@ and solve several problems of an old App's data lifecycle:
         <a href="#what-is-npe">What is NPE?</a> •
         <a href="#what-data-challenge-does-npe-face">What data challenge does NPE face?</a> •
         <a href="#usage">Usage</a> •
-        <a href="#license">License</a>
+        <a href="#license">License</a> •
+        <a href="#questions-similar-challenges">Questions? Similar challenges?</a>
     </p>
     <br>
     <p>
