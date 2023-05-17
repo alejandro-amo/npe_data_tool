@@ -230,12 +230,15 @@ def update_sheet_data(npe_id, **kwargs):
     global session
     # npe_authenticate()
     files = build_weird_npe_form_data(id=npe_id, **kwargs)
-    response = session.post(update_data_url, files=files)
-    if response.status_code == 200:
+    try:
+        response = session.post(update_data_url, files=files)
         print(f'Update of item {npe_id} completed without errors.')
-    else:
-        print(f'WARNING: Update of item {npe_id} returned HTTP code {response.status_code}.')
-    return response
+        return True
+    except requests.exceptions.RequestException as e:
+        # Handle connection or request errors
+        print(f'Error updating item {npe_id}: {str(e)}')
+        print(f'Returned HTTP code {response.status_code}.')
+        return False
 
 def enhance_establishment_data(name, address, postalcode, city, latitude, longitude):
     # Create the request URL with the provided parameters
@@ -306,7 +309,6 @@ def enrich_establishment_addresses():
     new_city = []
     new_lat = []
     new_long = []
-
     for index,row in df.iterrows():
         id = row['id']
         name = row['name']
@@ -334,7 +336,7 @@ def enrich_establishment_addresses():
     return df
 
 
-def mass_update_sheets_from_xlsx_data():
+def mass_update_npe_from_xlsx_data():
     print(f'Loading NoPucEsperar data in {xlsxpath}...')
     try:
         df = pd.read_excel(xlsxpath)
@@ -349,41 +351,136 @@ def mass_update_sheets_from_xlsx_data():
     df['id'] = pd.to_numeric(df['id'])
     for index,row in df.iterrows():
         id = row['id']
-        if id > 1924:  # we use this if for limiting operation to certain ranges of sheets i.e. from 4921 to 4926
-            print(f'Updating sheet of establishment with id {id} in NoPucEsperar...')
-            name = row['name']
-            address = row['address']
-            postalcode = row['postalcode']
-            city = row['city']
-            phone = row['phone']
-            email = row['email']
-            web = row['web']
-            lat = row['lat']
-            long = row['long']
-            '''
-            _ = update_sheet_data(id,
-                                  nom=name,
-                                  adreca=address,
-                                  cp=postalcode,
-                                  poblacio=city,
-                                  telefon=phone,
-                                  email=email,
-                                  web=web,
-                                  latitud=lat,
-                                  longitud=long)
-            '''
-            _ = update_sheet_data(id, actiu=1)
-            time.sleep(throttling_value)
+        print(f'Updating sheet of establishment with id {id} in NoPucEsperar...')
+        name = row['name']
+        address = row['address']
+        postalcode = row['postalcode']
+        city = row['city']
+        phone = row['phone']
+        email = row['email']
+        web = row['web']
+        lat = row['lat']
+        long = row['long']
+        _ = update_sheet_data(id,
+                              nom=name,
+                              adreca=address,
+                              cp=postalcode,
+                              poblacio=city,
+                              telefon=phone,
+                              email=email,
+                              web=web,
+                              latitud=lat,
+                              longitud=long,
+                              actiu=1)
+        time.sleep(throttling_value)
+
+
+def get_googleplaces_info(search_term):
+    # Format the name and address parameters for the API request
+    search_term = search_term.replace(' ', '+')
+
+    # Create the API request URL
+    url = f'https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input={search_term}&fields=name,business_status&inputtype=textquery&key={google_api_key}&language=es'
+    # print(f'DEBUG - URL: {url}')
+
+    try:
+        # Send the request to the Google Places API
+        response = requests.get(url)
+        data = response.json()
+        # Check if the request was successful
+        status = data['status']
+        if response.status_code == 200 and status == 'OK':
+            # Return the establishment data
+            result = []
+            result.append(len(data['candidates']))  # 1st element will always be the amout of items we have
+            for candidate in data['candidates']:
+                result.append(candidate)
+            return result
+        elif status == 'ZERO_RESULTS':
+            return [0]
         else:
-            pass
+            if 'error_message' in response:
+                error_message = response['error_message']
+            else:
+                error_message = '(none)'
+            print(f'Warning: Google findplace request status: {status}. Error message: {error_message}')
+            return None
+    except requests.exceptions.RequestException as e:
+        # Handle connection errors
+        print('Error connecting to the API:', e)
+        return None
 
 
+def enrich_establishment_statuses():
+    print(f'Loading NoPucEsperar data in {xlsxpath}...')
+    try:
+        df = pd.read_excel(xlsxpath)
+    except:
+        print('Error loading xlsx file with scrapped data from NoPucEsperar.')
+        print('You should perfom scrape command in order to have a working Excel file.')
+        exit(1)
+    # Sort by id
+    df.sort_values('id', inplace=True)
+    # Google findplaces API related fields. Used to determine the status of the establishment (did it close?)
+    # We take up to 3 candidates, but probably first will be the right one most of the time. We get the names to verify.
+    candidate1names = []
+    candidate1statuses = []
+    candidate2names = []
+    candidate2statuses = []
+    candidate3names = []
+    candidate3statuses = []
+
+    for index,row in df.iterrows():
+        id = row['id']
+        name = row['name']
+        address = row['address']
+        postalcode = row['postalcode']
+        city = row['city']
+        print(f'Querying Google API to know about the status of establishment #{id}...')
+        enriched_data = get_googleplaces_info(f'{name}, {address}, {postalcode} {city}')
+        if not enriched_data:
+            print('After querying Google API, we got no data. Please check connection or API key errors.')
+            enriched_data = [0]
+            # exit(1)
+        print(f'Debug - Values extracted from Google findplaces API: {enriched_data}')
+        candidate1name = None
+        candidate1status = None
+        candidate2name = None
+        candidate2status = None
+        candidate3name = None
+        candidate3status = None
+        if enriched_data[0] > 0:  # at least one candidate
+            candidate1name = enriched_data[1]['name']
+            if 'business_status' in enriched_data[1]:
+                candidate1status = enriched_data[1]['business_status']
+        if enriched_data[0] > 1:  # at least two candidates
+            candidate2name = enriched_data[2]['name']
+            if 'business_status' in enriched_data[2]:
+                candidate2status = enriched_data[2]['business_status']
+        if enriched_data[0] > 2:  # three or more candidates (we only get until the 3rd)
+            candidate3name = enriched_data[3]['name']
+            if 'business_status' in enriched_data[3]:
+                candidate3status = enriched_data[3]['business_status']
+        candidate1names.append(candidate1name)
+        candidate1statuses.append(candidate1status)
+        candidate2names.append(candidate2name)
+        candidate2statuses.append(candidate2status)
+        candidate3names.append(candidate3name)
+        candidate3statuses.append(candidate3status)
+
+    df['candidate1name'] = candidate1names
+    df['candidate1status'] = candidate1statuses
+    df['candidate2name'] = candidate2names
+    df['candidate2status'] = candidate2statuses
+    df['candidate3name'] = candidate3names
+    df['candidate3status'] = candidate3statuses
+    return df
 
 def parse_parameters():
     parser = argparse.ArgumentParser()
 
     # Define the arguments
-    parser.add_argument('command', type=str, help='Action to be performed (scrap, update). Mandatory.')
+    parser.add_argument('command', type=str, help='Action to be performed (scrap, enrich, enrich2, update, massupdate). Mandatory.')
     parser.add_argument('--id', type=int, help='Id of the element we want to update. Mandatory if command is "update".')
     parser.add_argument('--entitat_fk', type=int, help='Numerical value defining who registered this item. 1 is of ACCU Catalunya and it currently does not change.')
     parser.add_argument('--tipus_fk', type=int, help='Numerical value defining type of entity. 1 is generic and most common, 2 for hospitals, 3 for city halls.')
@@ -452,9 +549,14 @@ if __name__ == '__main__':
         elif parameters['command'] == 'enrich':
             results = enrich_establishment_addresses()
             results.to_excel(xlsxpath)
+        elif parameters['command'] == 'enrich2':
+            results = enrich_establishment_statuses()
+            results.to_excel(xlsxpath)
+            # results = get_googleplaces_info('EL MUSEU DEL VI, Cort Reial, 4, Girona')
+            # print(results)
         elif parameters['command'] == 'massupdate':
             npe_authenticate()  # test authentication, raise error if failed
-            mass_update_sheets_from_xlsx_data()
+            mass_update_npe_from_xlsx_data()
         else:
             print('Unknown command specified!')
     else:
