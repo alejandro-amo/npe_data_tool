@@ -23,11 +23,10 @@ and solve several problems of an old App's data lifecycle:
     </p>
     <br>
     <p style="text-align: center">
-        <img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/your-username/your-repository?style=flat-square">
-        <img alt="GitHub issues" src="https://img.shields.io/github/issues/your-username/your-repository?style=flat-square">
-        <img alt="GitHub pull requests" src="https://img.shields.io/github/issues-pr/your-username/your-repository?style=flat-square">
-        <img alt="GitHub stars" src="https://img.shields.io/github/stars/your-username/your-repository?style=flat-square">
-        <img alt="GitHub license" src="https://img.shields.io/github/license/your-username/your-repository?style=flat-square">
+        <img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/alejandro-amo/npe_data_tool">
+        <img alt="GitHub license" src="https://img.shields.io/github/license/alejandro-amo/npe_data_tool">
+        <img alt="Total cost of the project: 150€" src="https://img.shields.io/badge/Total%20cost%20(API usage)-150€-blue"> 
+        <img alt="Total development time: 2 days" src="https://img.shields.io/badge/Total%20development%20time-2%20days%20(staff%20training%20apart)-blue">
     </p>
 </div>
 
