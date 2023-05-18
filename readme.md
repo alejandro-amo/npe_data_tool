@@ -83,7 +83,7 @@ The program simply needs to be run with `python main.py massupdate` to push the 
 
 ### Optionally: minor, quick changes in single items
 
-For minor corrections and quick updates, I have also implemented a command line inside the tool so the NPE staff at NPE can update data really quickly. Its usage is also simple:
+For minor corrections and quick updates, I have also implemented a command line inside the tool so the NPE staff can update data really quickly. Its usage is also simple:
 
 
 `python main.py edit --id=123 --what_to_change=value_to_set --what_to_change=value_to_set ...`
