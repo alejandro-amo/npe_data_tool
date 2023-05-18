@@ -54,7 +54,7 @@ The goal is having a tool that could be used to provide data caring functionalit
 A simple run of `python main.py scrap` will connect to the admin backoffice and start scraping all data from establishments in the database.
 1. It will populate the `tmp` folder with .html files named as the numerical ID of the establishment, autocalculating which is the last/highest ID available.
 2. Once all html files are downloaded, it will parse and extract all the information in data fields to a dataframe.
-3. Finally, it will dump the dataframe to an MS excel file in `output\output.xlsx` so the staff con work on data maintenance very agilely and with no additional tools.
+3. Finally, it will dump the dataframe to an MS excel file in `output\output.xlsx` so the staff can work on data maintenance very agilely and with no additional tools.
 
 ### Next stage: Correcting missing/wrong GPS/address data
 Working with an excel file enabled the staff at NPE to correct and review more data in much less time, but that doesn't solve all the problems. At this point we still need to complete and correct missing or wrong GPS data about the establishments stored in database, and searching for it manually using Google maps is simply unbearable.
