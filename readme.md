@@ -18,7 +18,7 @@ and solve several problems of an old App's data lifecycle:
     </p>
     <br>
     <p>
-        <em>NOTE: This tool is published for showcasing purposes and it's not intended for public use (it requires credentials in the admin backoffice of a private App)<br>
+        <em>NOTE: This tool is published for showcasing purposes and it's not intended for public use<br>(it requires credentials in the admin backoffice of a private App)<br>
         However, you can take a look at the code to grab snippets of code and learn about data scrapping/updating in complex situations. If it was useful for you in a way or another, please star ⭐️ this repository and send me an email to tell your story :)</em>
     </p>
     <br>
