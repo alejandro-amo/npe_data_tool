@@ -120,17 +120,29 @@ def dump_pages(until_id, from_id=None):
         time.sleep(throttling_value)
 
 
-def soup_to_values(soup):
+def soup_to_values(soup, fallback_id:int):
     form_values = {}
     for input_tag in soup.find_all('input'):
-        form_values[input_tag.get('name')] = input_tag.get('value')
+        input_type = input_tag.get('type')
+        if input_type and input_type.lower() == 'checkbox':
+            if input_tag.get('checked') == "checked":
+                is_checked = 1
+            else:
+                is_checked = 0
+            form_values[input_tag.get('name')] = is_checked
+        else:
+            form_values[input_tag.get('name')] = input_tag.get('value')
 
     for select_tag in soup.find_all('select'):
         try:
             form_values[select_tag.get('name')] = select_tag.find('option', selected=True).get('value')
+        
         except AttributeError as e:
-            print(f'Omitting this page because it has empty data in form (inactive collaborator)')
-            return None
+            print(f'This page is empty (removed establishment). Returning an inactive establishment with generic name.')
+            return {'id': fallback_id, 'active': 0, 'name': "(establecimiento borrado)", 'type': 1, 'address': "",
+             'postalcode': "", 'city': "", 'phone': "", 'email': "", 'web': "", 'lat': "", 'long': ""}
+
+
     # print(form_values)
     this_id = form_values['id']
     this_name = form_values['input[nom]']
@@ -143,7 +155,8 @@ def soup_to_values(soup):
     this_web = form_values['input[web]']
     this_gpslat = form_values['input[latitud]']
     this_gpslong = form_values['input[longitud]']
-    final_data = {'id': this_id, 'name': this_name, 'type': this_type, 'address': this_address,
+    this_active = form_values['input[actiu]']  # bug fixed in 20230527
+    final_data = {'id': this_id, 'active': this_active,'name': this_name, 'type': this_type, 'address': this_address,
                   'postalcode': this_postalcode,
                   'city': this_city, 'phone': this_phone, 'email': this_email, 'web': this_web,
                   'lat': this_gpslat, 'long': this_gpslong}
@@ -152,6 +165,9 @@ def soup_to_values(soup):
 
 
 def parse_single_page(page_path):
+    fallback_id = os.path.basename(page_path)
+    fallback_id = os.path.splitext(fallback_id)[0]
+    # print(f'Fallback ID (used in case of empty data/errors): {fallback_id}')
     # check if the file exists
     if not os.path.exists(page_path):
         raise FileNotFoundError(f"HTML file not found at {page_path}")
@@ -163,7 +179,7 @@ def parse_single_page(page_path):
 
     # create a BeautifulSoup object from the HTML
     soup = BeautifulSoup(html, "html.parser")
-    return soup_to_values(soup)
+    return soup_to_values(soup, fallback_id)
 
 
 def parse_pages():
@@ -374,6 +390,32 @@ def mass_update_npe_from_xlsx_data():
                               actiu=1)
         time.sleep(throttling_value)
 
+def mass_disable_from_xlsx_data():
+    print(f'Loading NoPucEsperar data in {xlsxpath}...')
+    try:
+        df = pd.read_excel(xlsxpath)
+    except:
+        print('Error loading xlsx file with scrapped data from NoPucEsperar.')
+        print('You should perfom scrape command in order to have a working Excel file.')
+        exit(1)
+    # Sort by id
+    df.sort_values('id', inplace=True)
+    df.fillna('', inplace=True)
+    df = df.astype(str)
+    df['id'] = pd.to_numeric(df['id'])
+    for index,row in df.iterrows():
+        id = row['id']
+        status = row['Estado']
+        if status == 'CLOSED_PERMANENTLY' or status == 'CLOSED_TEMPORARILY':
+            effective_status = 0
+            print(f'Disabling establishment with id {id} since its status in Google Maps was {status}...')
+            _ = update_sheet_data(id, actiu=effective_status)
+            time.sleep(throttling_value)
+        else:
+            effective_status = 1
+            print(f'Leaving establishment with id {id} untouched since its status in Google Maps was {status}...')
+
+
 
 def get_googleplaces_info(search_term):
     # Format the name and address parameters for the API request
@@ -545,6 +587,7 @@ if __name__ == '__main__':
         elif parameters['command'] == 'scrap':
             max_id = get_amount_of_establishments()
             dump_pages(max_id, 1)  # TODO: provide control of start_from parameter via command line
+        elif parameters['command'] == 'parse':
             parse_pages()
         elif parameters['command'] == 'enrich':
             results = enrich_establishment_addresses()
@@ -557,6 +600,9 @@ if __name__ == '__main__':
         elif parameters['command'] == 'massupdate':
             npe_authenticate()  # test authentication, raise error if failed
             mass_update_npe_from_xlsx_data()
+        elif parameters['command'] == 'massdisable':
+            npe_authenticate()
+            mass_disable_from_xlsx_data()
         else:
             print('Unknown command specified!')
     else:
