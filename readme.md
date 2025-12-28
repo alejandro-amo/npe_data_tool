@@ -7,7 +7,7 @@ and solve several problems of an old App's data lifecycle:
 </strong>
     </p>
     <br>
-    <img src="[](https://nopucesperar.org/wp-content/uploads/2024/01/Targeta-NPE-Catala_out-1-scaled.jpg)" alt="Header Image">
+    <img src="[https://nopucesperar.org/wp-content/uploads/2024/01/Targeta-NPE-Catala_out-1-scaled.jpg](https://nopucesperar.org/wp-content/uploads/2024/01/Targeta-NPE-Catala_out-1-scaled.jpg)" alt="Header Image">
     <br>
     <p style="text-align: center">
         <a href="#what-is-npe">What is NPE?</a> •
